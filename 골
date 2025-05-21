@@ -1,0 +1,649 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>스마트 타이머</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        /* 기본 폰트 설정: Noto Sans KR 적용 */
+        body {
+            font-family: 'Noto Sans KR', sans-serif;
+            /* 회색 바탕 없애고 모두 흰색으로 통일 */
+            background-color: #ffffff; /* bg-white */
+        }
+        /* 알람 토글 스위치 스타일 */
+        .peer:checked + div {
+            background-color: #93c5fd; /* on 상태일 때 파스텔톤 파란색 */
+        }
+        .peer-checked:after:translate-x-full {
+            transform: translateX(100%);
+        }
+        /* 3D 버튼 효과를 위한 CSS 변수 및 트랜지션 */
+        .button-3d {
+            position: relative;
+            transform-style: preserve-3d;
+            /* 버튼 반응 속도 개선: transition duration 20ms로 단축 */
+            transition: transform 0.02s ease-out, box-shadow 0.02s ease-out; /* duration-20 */
+            /* 올라온 상태의 그림자 (더 두드러지게) */
+            box-shadow: 0 6px 8px -2px rgba(0, 0, 0, 0.15), 0 3px 5px -1px rgba(0, 0, 0, 0.1);
+        }
+        .button-3d.pressed {
+            transform: translateY(3px); /* 눌렸을 때 더 깊이 들어가는 효과 */
+            /* 눌린 상태의 내부 그림자 (더 두드러지게) */
+            box-shadow: inset 0 3px 5px 0 rgba(0, 0, 0, 0.3);
+        }
+        /* 커스텀 파스텔 블루 색상 (알람 토글과 동일) */
+        .bg-custom-blue {
+            background-color: #93c5fd;
+        }
+        .hover\:bg-custom-blue-dark:hover {
+            background-color: #60a5fa; /* Tailwind blue-400과 유사한 약간 더 어두운 색상 */
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="w-full max-w-md flex justify-end mb-4">
+        <button id="showTotalStudyTimeBtn"
+            class="p-2 rounded-full bg-custom-blue text-white shadow-md hover:bg-custom-blue-dark transition-colors"
+            aria-label="오늘 총 공부 시간 보기">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-clock"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        </button>
+    </div>
+
+    <div id="totalStudyTimePopup" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-xl shadow-xl max-w-sm w-full text-center">
+            <h2 class="text-2xl font-bold mb-4 text-gray-800">오늘 총 공부 시간</h2>
+            <p id="totalStudyTimeDisplay" class="text-4xl font-mono text-blue-600 mb-6">00:00:00</p>
+            </div>
+    </div>
+
+    <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md flex flex-col items-center space-y-8">
+        <div class="flex w-full space-x-2">
+            <button id="generalTimerBtn"
+                class="flex-1 py-4 rounded-xl font-semibold transition-colors duration-20 button-3d bg-blue-500 text-white">
+                일반 타이머
+            </button>
+            <button id="progressiveTimerBtn"
+                class="flex-1 py-4 rounded-xl font-semibold transition-colors duration-20 button-3d bg-white text-gray-700 hover:bg-gray-100">
+                점진적 타이머
+            </button>
+            <button id="pomodoroTimerBtn"
+                class="flex-1 py-4 rounded-xl font-semibold transition-colors duration-20 button-3d bg-white text-gray-700 hover:bg-gray-100">
+                뽀모도로
+            </button>
+        </div>
+
+        <div id="progressiveTimerInputContainer" class="w-full text-center hidden">
+            <label for="progressiveTargetTimeInput" class="block text-gray-600 text-lg mb-2">목표 시간 (분):</label>
+            <input id="progressiveTargetTimeInput" type="number" value="5"
+                class="w-32 p-3 text-center text-3xl font-mono border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                placeholder="분" min="1" aria-label="점진적 타이머 목표 시간 설정">
+        </div>
+
+        <div id="pomodoroSettingsContainer" class="w-full text-center hidden space-y-4">
+            <div class="flex justify-center items-center space-x-4">
+                <div class="flex flex-col items-center">
+                    <label for="pomodoroFocusInput" class="block text-gray-600 text-lg mb-1">집중 시간 (분):</label>
+                    <input id="pomodoroFocusInput" type="number" value="25"
+                        class="w-24 p-2 text-center text-xl font-mono border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        min="1" aria-label="뽀모도로 집중 시간 설정">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="pomodoroSessionsBeforeLongBreakInput" class="block text-gray-600 text-lg mb-1">세션 수:</label>
+                    <input id="pomodoroSessionsBeforeLongBreakInput" type="number" value="4"
+                        class="w-24 p-2 text-center text-xl font-mono border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        min="1" aria-label="긴 휴식 전 세션 수 설정">
+                </div>
+            </div>
+            <div class="flex justify-center items-center space-x-4">
+                <div class="flex flex-col items-center">
+                    <label for="pomodoroShortBreakInput" class="block text-gray-600 text-lg mb-1">짧은 휴식 (분):</label>
+                    <input id="pomodoroShortBreakInput" type="number" value="5"
+                        class="w-24 p-2 text-center text-xl font-mono border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        min="1" aria-label="뽀모도로 짧은 휴식 시간 설정">
+                </div>
+                <div class="flex flex-col items-center">
+                    <label for="pomodoroLongBreakInput" class="block text-gray-600 text-lg mb-1">긴 휴식 (분):</label>
+                    <input id="pomodoroLongBreakInput" type="number" value="15"
+                        class="w-24 p-2 text-center text-xl font-mono border-2 border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                        min="1" aria-label="뽀모도로 긴 휴식 시간 설정">
+                </div>
+            </div>
+        </div>
+
+        <div id="pomodoroPhaseDisplay" class="text-xl font-semibold text-gray-700 hidden">
+            <span id="pomodoroPhaseText" class="flex items-center justify-center"></span>
+            <p id="pomodoroRoundsText" class="text-sm text-gray-500 mt-1">완료된 집중 라운드: 0</p>
+        </div>
+
+        <div id="progressiveDirectionButtons" class="w-full flex justify-end px-6 -mb-4 z-10 hidden">
+            <button id="progressiveForwardBtn"
+                class="w-10 h-10 rounded-full text-gray-800 font-bold text-xl transition-all duration-20 ease-in-out button-3d bg-white hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center mr-2">
+                +
+            </button>
+            <button id="progressiveReverseBtn"
+                class="w-10 h-10 rounded-full text-gray-800 font-bold text-xl transition-all duration-20 ease-in-out button-3d bg-white hover:bg-gray-100 active:bg-gray-200 flex items-center justify-center">
+                -
+            </button>
+        </div>
+
+        <div class="text-5xl font-mono text-gray-900 bg-white p-6 rounded-xl shadow-inner w-full text-center relative border border-gray-200">
+            <span id="timerDisplay">00:00:00</span>
+        </div>
+
+        <div class="flex w-full space-x-4">
+            <button id="startPauseBtn"
+                class="flex-1 py-2.5 px-5 rounded-xl text-gray-800 font-semibold transition-all duration-20 ease-in-out button-3d bg-white hover:bg-gray-100 active:bg-gray-200">
+                <svg id="startPauseIcon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-play inline-block mr-2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span id="startPauseText">시작</span>
+            </button>
+            <button id="resetBtn"
+                class="flex-1 py-2.5 px-5 rounded-xl text-gray-800 font-semibold transition-all duration-20 ease-in-out button-3d bg-white hover:bg-gray-100 active:bg-gray-200">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-rotate-ccw inline-block mr-2"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
+                재설정
+            </button>
+        </div>
+
+        <div class="flex items-center justify-between w-full p-4 bg-white rounded-lg shadow-inner">
+            <span class="text-lg font-semibold text-gray-700">알람 소리:</span>
+            <label class="relative inline-flex items-center cursor-pointer">
+                <input type="checkbox" id="alarmSoundToggle" checked class="sr-only peer" aria-label="알람 소리 켜기/끄기">
+                <div class="w-14 h-8 rounded-full peer peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 bg-blue-300 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[4px] after:left-[4px] after:bg-white after:border after:border-gray-300 after:rounded-full after:h-6 after:w-6 after:transition-all"></div>
+                <span id="alarmStatusDisplay" class="ml-3 text-sm font-medium text-gray-900 flex items-center">
+                    <strong id="alarmOnOffText" class="mr-1">ON</strong>
+                    <svg id="alarmBellIcon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-bell text-blue-600"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+                </span>
+            </label>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수 선언
+        let timerType = 'general'; // 'general', 'progressive', 'pomodoro'
+        let isRunning = false;
+        let time = 0;
+        let progressiveTargetTime = 5; // 점진적 타이머의 목표 시간 (분 단위, 기본값 5분)
+        let progressiveDirection = 'forward'; // 'forward' 또는 'reverse'
+        let progressiveCurrentSegment = 1; // 현재 점진적 타이머의 세그먼트 (분 단위)
+
+        let initialPomodoroFocusTime = 25 * 60; // 뽀모도로 집중 시간 (초 단위)
+        let initialPomodoroShortBreakTime = 5 * 60; // 뽀모도로 짧은 휴식 시간 (초 단위)
+        let initialPomodoroLongBreakTime = 15 * 60; // 뽀모도로 긴 휴식 시간 (초 단위)
+        let initialPomodoroSessionsBeforeLongBreak = 4; // 긴 휴식 전 세션 수 (기본값)
+        let pomodoroPhase = 'focus'; // 'focus', 'break', 'longBreak'
+        let pomodoroRounds = 0;
+        let alarmSoundOn = true;
+        let totalStudyTime = 0;
+        let intervalId = null;
+        let audio = null;
+
+        // DOM 요소 가져오기
+        const timerDisplay = document.getElementById('timerDisplay');
+        const generalTimerBtn = document.getElementById('generalTimerBtn');
+        const progressiveTimerBtn = document.getElementById('progressiveTimerBtn');
+        const pomodoroTimerBtn = document.getElementById('pomodoroTimerBtn');
+
+        const progressiveTimerInputContainer = document.getElementById('progressiveTimerInputContainer');
+        const progressiveTargetTimeInput = document.getElementById('progressiveTargetTimeInput');
+        const progressiveForwardBtn = document.getElementById('progressiveForwardBtn');
+        const progressiveReverseBtn = document.getElementById('progressiveReverseBtn');
+        const progressiveDirectionButtons = document.getElementById('progressiveDirectionButtons'); // 방향 버튼 컨테이너
+
+        const pomodoroSettingsContainer = document.getElementById('pomodoroSettingsContainer');
+        const pomodoroFocusInput = document.getElementById('pomodoroFocusInput');
+        const pomodoroShortBreakInput = document.getElementById('pomodoroShortBreakInput');
+        const pomodoroLongBreakInput = document.getElementById('pomodoroLongBreakInput');
+        const pomodoroSessionsBeforeLongBreakInput = document.getElementById('pomodoroSessionsBeforeLongBreakInput');
+
+        const pomodoroPhaseDisplay = document.getElementById('pomodoroPhaseDisplay');
+        const pomodoroPhaseText = document.getElementById('pomodoroPhaseText');
+        const pomodoroRoundsText = document.getElementById('pomodoroRoundsText');
+        const startPauseBtn = document.getElementById('startPauseBtn');
+        const startPauseIcon = document.getElementById('startPauseIcon');
+        const startPauseText = document.getElementById('startPauseText');
+        const resetBtn = document.getElementById('resetBtn');
+        const alarmSoundToggle = document.getElementById('alarmSoundToggle');
+        const alarmStatusDisplay = document.getElementById('alarmStatusDisplay');
+        const alarmOnOffText = document.getElementById('alarmOnOffText');
+        const alarmBellIcon = document.getElementById('alarmBellIcon');
+        const showTotalStudyTimeBtn = document.getElementById('showTotalStudyTimeBtn');
+        const totalStudyTimePopup = document.getElementById('totalStudyTimePopup');
+        const totalStudyTimeDisplay = document.getElementById('totalStudyTimeDisplay');
+
+        // 시간 포맷 함수 (HH:MM:SS)
+        function formatTime(seconds) {
+            const hours = Math.floor(seconds / 3600);
+            const minutes = Math.floor((seconds % 3600) / 60);
+            const remainingSeconds = seconds % 60;
+            return [hours, minutes, remainingSeconds]
+                .map(unit => String(unit).padStart(2, '0'))
+                .join(':');
+        }
+
+        // 타이머 업데이트 함수
+        function updateTimerDisplay() {
+            timerDisplay.textContent = formatTime(time);
+            totalStudyTimeDisplay.textContent = formatTime(totalStudyTime);
+        }
+
+        // 알람 소리 초기화
+        function initializeAudio() {
+            const audioData = 'data:audio/wav;base64,UklGRlQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAD//w==';
+            audio = new Audio(audioData);
+        }
+
+        // 총 공부 시간 및 날짜를 localStorage에 저장
+        function saveTotalStudyTime() {
+            const today = new Date().toISOString().slice(0, 10); //YYYY-MM-DD 형식
+            localStorage.setItem('totalStudyTime', totalStudyTime);
+            localStorage.setItem('lastRecordedDate', today);
+        }
+
+        // 총 공부 시간 로드 및 날짜 비교
+        function loadTotalStudyTime() {
+            const storedTime = localStorage.getItem('totalStudyTime');
+            const storedDate = localStorage.getItem('lastRecordedDate');
+            const today = new Date().toISOString().slice(0, 10); //YYYY-MM-DD 형식
+
+            if (storedDate && storedDate === today) {
+                totalStudyTime = parseInt(storedTime || '0', 10);
+            } else {
+                totalStudyTime = 0;
+                saveTotalStudyTime(); // 새 날짜로 저장
+            }
+        }
+
+        // 타이머 시작/일시정지 로직
+        function startTimer() {
+            if (intervalId) {
+                clearInterval(intervalId);
+            }
+            intervalId = setInterval(() => {
+                if (isRunning) {
+                    if (timerType === 'general') {
+                        time = time + 1; // 일반 타이머: 카운트 업
+                    } else if (timerType === 'progressive') {
+                        time = time > 0 ? time - 1 : 0; // 점진적 타이머: 카운트 다운
+                    } else if (timerType === 'pomodoro') {
+                        time = time > 0 ? time - 1 : 0; // 뽀모도로 타이머: 카운트 다운
+                    }
+
+                    // 총 공부 시간 누적 (일반, 점진적, 뽀모도로 집중 시간만)
+                    if (timerType === 'general' || timerType === 'progressive' || (timerType === 'pomodoro' && pomodoroPhase === 'focus')) {
+                        totalStudyTime++;
+                    }
+
+                    updateTimerDisplay();
+                    saveTotalStudyTime(); // 매 초마다 총 공부 시간 저장
+
+                    // 타이머 완료 처리
+                    if (time === 0) {
+                        handleTimerCompletion();
+                    }
+                }
+            }, 1000);
+        }
+
+        // 타이머 완료 시 처리
+        function handleTimerCompletion() {
+            isRunning = false;
+            clearInterval(intervalId);
+            if (alarmSoundOn && audio) {
+                audio.play();
+            }
+            updateButtonStates(); // 버튼 상태 업데이트
+
+            if (timerType === 'progressive') {
+                // 점진적 타이머 세그먼트 전환
+                if (progressiveDirection === 'forward') {
+                    if (progressiveCurrentSegment < progressiveTargetTime) {
+                        progressiveCurrentSegment++;
+                        time = progressiveCurrentSegment * 60;
+                        isRunning = true;
+                        startTimer();
+                    } else {
+                        // 모든 세그먼트 완료
+                        isRunning = false;
+                    }
+                } else { // reverse
+                    if (progressiveCurrentSegment > 1) {
+                        progressiveCurrentSegment--;
+                        time = progressiveCurrentSegment * 60;
+                        isRunning = true;
+                        startTimer();
+                    } else {
+                        // 모든 세그먼트 완료
+                        isRunning = false;
+                    }
+                }
+            } else if (timerType === 'pomodoro') {
+                if (pomodoroPhase === 'focus') {
+                    pomodoroRounds++;
+                    updatePomodoroDisplay();
+                    // 설정된 세션 수마다 긴 휴식으로 전환
+                    if (pomodoroRounds % initialPomodoroSessionsBeforeLongBreak === 0) {
+                        pomodoroPhase = 'longBreak';
+                        time = initialPomodoroLongBreakTime; // 설정된 긴 휴식 시간 사용
+                    } else {
+                        pomodoroPhase = 'break';
+                        time = initialPomodoroShortBreakTime; // 설정된 짧은 휴식 시간 사용
+                    }
+                } else if (pomodoroPhase === 'break' || pomodoroPhase === 'longBreak') {
+                    pomodoroPhase = 'focus';
+                    time = initialPomodoroFocusTime; // 설정된 집중 시간 사용
+                }
+                isRunning = true; // 다음 뽀모도로 단계 자동 시작
+                startTimer(); // 다음 단계 타이머 시작
+                updatePomodoroDisplay();
+            }
+        }
+
+        // 메인 제어 버튼 (시작/일시정지, 재설정) 상태 업데이트 (3D 효과 포함)
+        function updateButtonStates() {
+            // 시작/일시정지 버튼
+            if (isRunning) {
+                startPauseIcon.innerHTML = '<rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/>'; // 일시정지 아이콘 SVG path
+                startPauseBtn.classList.add('pressed');
+                startPauseBtn.classList.remove('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                startPauseBtn.classList.add('bg-gray-200'); // Pressed state background
+                startPauseText.textContent = '일시정지';
+            } else {
+                startPauseIcon.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"/>'; // 시작 아이콘 SVG path
+                startPauseBtn.classList.remove('pressed', 'bg-gray-200'); // Remove pressed state background
+                startPauseBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                startPauseText.textContent = '시작';
+            }
+            // 재설정 버튼은 항상 눌리지 않은 상태
+            resetBtn.classList.remove('pressed', 'bg-gray-200'); // Ensure it's not pressed
+            resetBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+
+            // 점진적 타이머 방향 버튼 상태 업데이트
+            // 점진적 타이머가 활성화된 경우에만 버튼 상태 업데이트
+            if (timerType === 'progressive') {
+                if (progressiveDirection === 'forward') {
+                    progressiveForwardBtn.classList.add('pressed');
+                    progressiveForwardBtn.classList.remove('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                    progressiveForwardBtn.classList.add('bg-gray-200');
+                    progressiveReverseBtn.classList.remove('pressed', 'bg-gray-200');
+                    progressiveReverseBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                } else { // reverse
+                    progressiveReverseBtn.classList.add('pressed');
+                    progressiveReverseBtn.classList.remove('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                    progressiveReverseBtn.classList.add('bg-gray-200');
+                    progressiveForwardBtn.classList.remove('pressed', 'bg-gray-200');
+                    progressiveForwardBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                }
+            } else {
+                // 점진적 타이머가 아닐 때는 방향 버튼의 pressed 상태 제거
+                progressiveForwardBtn.classList.remove('pressed', 'bg-gray-200');
+                progressiveForwardBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+                progressiveReverseBtn.classList.remove('pressed', 'bg-gray-200');
+                progressiveReverseBtn.classList.add('bg-white', 'hover:bg-gray-100', 'active:bg-gray-200');
+            }
+        }
+
+        // 타이머 유형 변경 처리 및 버튼 3D 효과 업데이트
+        function switchTimerType(newType) {
+            isRunning = false;
+            clearInterval(intervalId);
+            timerType = newType;
+
+            // 모든 타이머 유형 버튼의 3D 및 색상 상태 초기화
+            [generalTimerBtn, progressiveTimerBtn, pomodoroTimerBtn].forEach(btn => {
+                btn.classList.remove('pressed', 'bg-blue-500', 'text-white');
+                btn.classList.add('bg-white', 'text-gray-700', 'hover:bg-gray-100');
+            });
+
+            // 모든 설정 컨테이너 및 방향 버튼 숨기기
+            progressiveTimerInputContainer.classList.add('hidden');
+            pomodoroSettingsContainer.classList.add('hidden');
+            pomodoroPhaseDisplay.classList.add('hidden');
+            progressiveDirectionButtons.classList.add('hidden'); // 방향 버튼 숨기기
+
+            // 선택된 타이머 유형에 따라 초기 시간 및 UI 업데이트
+            if (timerType === 'general') {
+                time = 0; // 일반 타이머는 0부터 시작 (카운트 업)
+                generalTimerBtn.classList.add('bg-blue-500', 'text-white', 'pressed');
+                generalTimerBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-100');
+            } else if (timerType === 'progressive') {
+                // 점진적 타이머 초기 세그먼트 설정
+                if (progressiveDirection === 'forward') {
+                    progressiveCurrentSegment = 1;
+                } else { // reverse
+                    progressiveCurrentSegment = progressiveTargetTime;
+                }
+                time = progressiveCurrentSegment * 60; // 현재 세그먼트 시간으로 설정
+                progressiveTimerBtn.classList.add('bg-blue-500', 'text-white', 'pressed');
+                progressiveTimerBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-100');
+                progressiveTimerInputContainer.classList.remove('hidden');
+                progressiveDirectionButtons.classList.remove('hidden'); // 방향 버튼 보이기
+            } else if (timerType === 'pomodoro') {
+                time = initialPomodoroFocusTime; // 뽀모도로 타이머는 집중 시간부터 시작
+                pomodoroPhase = 'focus';
+                pomodoroRounds = 0;
+                pomodoroTimerBtn.classList.add('bg-blue-500', 'text-white', 'pressed');
+                pomodoroTimerBtn.classList.remove('bg-white', 'text-gray-700', 'hover:bg-gray-100');
+                pomodoroSettingsContainer.classList.remove('hidden');
+                pomodoroPhaseDisplay.classList.remove('hidden');
+                updatePomodoroDisplay();
+            }
+            updateTimerDisplay();
+            updateButtonStates(); // 메인 제어 버튼 상태도 업데이트
+        }
+
+        // 뽀모도로 디스플레이 업데이트
+        function updatePomodoroDisplay() {
+            if (pomodoroPhase === 'focus') {
+                pomodoroPhaseText.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-timer mr-2 text-green-600"></svg><span class="text-green-600">집중 시간</span>';
+            } else if (pomodoroPhase === 'break') {
+                pomodoroPhaseText.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-coffee mr-2 text-orange-500"></svg><span class="text-orange-500">짧은 휴식</span>';
+            } else if (pomodoroPhase === 'longBreak') {
+                pomodoroPhaseText.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-coffee mr-2 text-red-500"></svg><span class="text-red-500">긴 휴식</span>';
+            }
+            pomodoroRoundsText.textContent = `완료된 집중 라운드: ${pomodoroRounds}`;
+        }
+
+        // 알람 토글 상태 업데이트
+        function updateAlarmToggleDisplay() {
+            const toggleDiv = alarmSoundToggle.nextElementSibling; // div 요소
+            if (alarmSoundOn) {
+                alarmOnOffText.textContent = 'ON';
+                alarmBellIcon.innerHTML = '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>';
+                alarmBellIcon.classList.remove('text-gray-500');
+                alarmBellIcon.classList.add('text-blue-600');
+                toggleDiv.classList.remove('bg-gray-200');
+                toggleDiv.classList.add('bg-blue-300');
+            } else {
+                alarmOnOffText.textContent = 'OFF';
+                alarmBellIcon.innerHTML = '<path d="M8.56 2.9A7.14 7.14 0 0 1 18 10a6 6 0 0 0 3 7H3a6 6 0 0 0 3-7c0-.6-.1-1.2-.24-1.76"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/><line x1="2" x2="22" y1="2" y2="22"/>';
+                alarmBellIcon.classList.remove('text-blue-600');
+                alarmBellIcon.classList.add('text-gray-500');
+                toggleDiv.classList.remove('bg-blue-300');
+                toggleDiv.classList.add('bg-gray-200');
+            }
+        }
+
+
+        // 이벤트 리스너 설정
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeAudio();
+            loadTotalStudyTime(); // 페이지 로드 시 총 공부 시간 로드 및 날짜 비교
+            updateTimerDisplay();
+            updateButtonStates(); // 초기 메인 제어 버튼 상태 설정
+            switchTimerType('general'); // 초기 타이머 유형 설정 (이 함수 내에서 타이머 유형 버튼 상태도 업데이트됨)
+            updateAlarmToggleDisplay(); // 초기 알람 토글 상태 설정
+
+            generalTimerBtn.addEventListener('click', () => switchTimerType('general'));
+            progressiveTimerBtn.addEventListener('click', () => switchTimerType('progressive'));
+            pomodoroTimerBtn.addEventListener('click', () => switchTimerType('pomodoro'));
+
+            // 점진적 타이머 목표 시간 설정
+            progressiveTargetTimeInput.addEventListener('input', (e) => {
+                const inputVal = parseInt(e.target.value, 10);
+                if (!isNaN(inputVal) && inputVal >= 1) { // 최소 1분
+                    progressiveTargetTime = inputVal;
+                    // 현재 점진적 타이머라면 세그먼트 시간 재설정
+                    if (timerType === 'progressive' && !isRunning) {
+                        if (progressiveDirection === 'forward') {
+                            progressiveCurrentSegment = 1;
+                        } else { // reverse
+                            progressiveCurrentSegment = progressiveTargetTime;
+                        }
+                        time = progressiveCurrentSegment * 60;
+                        updateTimerDisplay();
+                    }
+                } else if (e.target.value === '') {
+                    progressiveTargetTime = 0; // 입력이 없으면 0으로 설정 (UI에서 0으로 표시)
+                    if (timerType === 'progressive' && !isRunning) {
+                        time = 0;
+                        updateTimerDisplay();
+                    }
+                }
+            });
+
+            // 점진적 타이머 정방향 버튼
+            progressiveForwardBtn.addEventListener('click', () => {
+                if (progressiveDirection !== 'forward') {
+                    progressiveDirection = 'forward';
+                    isRunning = false;
+                    clearInterval(intervalId);
+                    progressiveCurrentSegment = 1;
+                    time = progressiveCurrentSegment * 60;
+                    updateTimerDisplay();
+                    updateButtonStates();
+                }
+            });
+
+            // 점진적 타이머 역방향 버튼
+            progressiveReverseBtn.addEventListener('click', () => {
+                if (progressiveDirection !== 'reverse') {
+                    progressiveDirection = 'reverse';
+                    isRunning = false;
+                    clearInterval(intervalId);
+                    progressiveCurrentSegment = progressiveTargetTime;
+                    time = progressiveCurrentSegment * 60;
+                    updateTimerDisplay();
+                    updateButtonStates();
+                }
+            });
+
+
+            // 뽀모도로 집중 시간 설정
+            pomodoroFocusInput.addEventListener('input', (e) => {
+                const inputVal = parseInt(e.target.value, 10);
+                if (!isNaN(inputVal) && inputVal >= 1) { // 최소 1분
+                    initialPomodoroFocusTime = inputVal * 60;
+                    if (timerType === 'pomodoro' && pomodoroPhase === 'focus' && !isRunning) {
+                        time = initialPomodoroFocusTime;
+                        updateTimerDisplay();
+                    }
+                } else if (e.target.value === '') {
+                    initialPomodoroFocusTime = 0; // 입력이 없으면 0으로 설정
+                }
+            });
+
+            // 뽀모도로 짧은 휴식 시간 설정
+            pomodoroShortBreakInput.addEventListener('input', (e) => {
+                const inputVal = parseInt(e.target.value, 10);
+                if (!isNaN(inputVal) && inputVal >= 1) { // 최소 1분
+                    initialPomodoroShortBreakTime = inputVal * 60;
+                    if (timerType === 'pomodoro' && pomodoroPhase === 'break' && !isRunning) {
+                        time = initialPomodoroShortBreakTime;
+                        updateTimerDisplay();
+                    }
+                } else if (e.target.value === '') {
+                    initialPomodoroShortBreakTime = 0;
+                }
+            });
+
+            // 뽀모도로 긴 휴식 시간 설정
+            pomodoroLongBreakInput.addEventListener('input', (e) => {
+                const inputVal = parseInt(e.target.value, 10);
+                if (!isNaN(inputVal) && inputVal >= 1) { // 최소 1분
+                    initialPomodoroLongBreakTime = inputVal * 60;
+                    if (timerType === 'pomodoro' && pomodoroPhase === 'longBreak' && !isRunning) {
+                        time = initialPomodoroLongBreakTime;
+                        updateTimerDisplay();
+                    }
+                } else if (e.target.value === '') {
+                    initialPomodoroLongBreakTime = 0;
+                }
+            });
+
+            // 뽀모도로 세션 수 설정
+            pomodoroSessionsBeforeLongBreakInput.addEventListener('input', (e) => {
+                const inputVal = parseInt(e.target.value, 10);
+                if (!isNaN(inputVal) && inputVal >= 1) { // 최소 1
+                    initialPomodoroSessionsBeforeLongBreak = inputVal;
+                } else if (e.target.value === '') {
+                    initialPomodoroSessionsBeforeLongBreak = 1; // 입력이 없으면 1로 설정
+                }
+            });
+
+
+            startPauseBtn.addEventListener('click', () => {
+                // 점진적 타이머의 목표 시간이 0이거나 1 미만일 경우 시작 방지
+                if (timerType === 'progressive' && progressiveTargetTime < 1) {
+                    console.log("점진적 타이머는 목표 시간을 1분 이상으로 설정해야 시작할 수 있습니다.");
+                    return; // 함수 실행 중단
+                }
+
+                isRunning = !isRunning;
+                if (isRunning) {
+                    startTimer();
+                } else {
+                    clearInterval(intervalId);
+                }
+                updateButtonStates();
+            });
+
+            resetBtn.addEventListener('click', () => {
+                isRunning = false;
+                clearInterval(intervalId);
+                if (timerType === 'general') {
+                    time = 0; // 일반 타이머는 0으로 재설정
+                } else if (timerType === 'progressive') {
+                    // 점진적 타이머 재설정 시 방향에 따라 초기 세그먼트로 돌아감
+                    if (progressiveDirection === 'forward') {
+                        progressiveCurrentSegment = 1;
+                    } else { // reverse
+                        progressiveCurrentSegment = progressiveTargetTime;
+                    }
+                    time = progressiveCurrentSegment * 60;
+                } else if (timerType === 'pomodoro') {
+                    time = initialPomodoroFocusTime; // 뽀모도로는 집중 시간으로 재설정
+                    pomodoroPhase = 'focus';
+                    pomodoroRounds = 0;
+                    updatePomodoroDisplay();
+                }
+                updateTimerDisplay();
+                updateButtonStates();
+            });
+
+            alarmSoundToggle.addEventListener('change', (e) => {
+                alarmSoundOn = e.target.checked;
+                updateAlarmToggleDisplay(); // 알람 토글 상태 업데이트 함수 호출
+            });
+
+            showTotalStudyTimeBtn.addEventListener('click', () => {
+                totalStudyTimePopup.classList.remove('hidden');
+            });
+
+            // 팝업 외부 클릭 시 닫기
+            totalStudyTimePopup.addEventListener('click', (event) => {
+                if (event.target === totalStudyTimePopup) {
+                    totalStudyTimePopup.classList.add('hidden');
+                }
+            });
+
+            // Lucide 아이콘 초기화 (HTML에 직접 삽입된 SVG를 인식하도록)
+            lucide.createIcons();
+        });
+    </script>
+</body>
+</html>
+
